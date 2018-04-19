@@ -4,6 +4,11 @@ resource_types:
   source:
     repository: laurentverbruggen/concourse-git-semver-tag-resource
 
+- name: slack-notification
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
+
 resources:
 - name: concourse-demo-acceptance-tests
   type: git
@@ -60,6 +65,11 @@ resources:
     space: cat
     skip_cert_check: true
 
+- name: notify
+  type: slack-notification
+  source:
+    url: ((slack-webhook))
+
 jobs:
 - name: python-unit-tests
   plan: 
@@ -104,6 +114,10 @@ jobs:
     passed: [deploy-python-demo-ci]
     trigger: true
   - task: run-acceptance-tests
+    on_failure:
+      put: notify
+      params:
+        text: "Acceptance test failed"
     config:
       platform: linux
       image_resource:
@@ -139,7 +153,7 @@ jobs:
   - get: concourse-demo-python-service
     passed: [deploy-python-demo-int]
   - put: concourse-demo-python-tag
-    
+    params: {bump: minor}
   - put: cf-resource-sit
     params:
       manifest: concourse-demo-python-service/manifest.yml
