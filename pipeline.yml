@@ -1,3 +1,9 @@
+resource_types:
+- name: concourse-git-semver-tag
+  type: docker-image
+  source:
+    repository: laurentverbruggen/concourse-git-semver-tag-resource
+
 resources:
 - name: concourse-demo-acceptance-tests
   type: git
