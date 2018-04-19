@@ -101,7 +101,6 @@ jobs:
           pipenv run behave
 
 - name: deploy-python-demo-int
-  serial_groups: [acceptance_tests]
   plan:
   - get: concourse-demo-python-service
     passed: [acceptance-tests]
@@ -113,7 +112,6 @@ jobs:
       current_app_name: concourse-demo-python-service-int
 
 - name: deploy-python-demo-preprod
-  serial_groups: [acceptance_tests]
   plan:
   - get: concourse-demo-python-service
     passed: [deploy-python-demo-int]
@@ -126,7 +124,6 @@ jobs:
       current_app_name: concourse-demo-python-service-preprod
 
 - name: deploy-python-demo-prod
-  serial_groups: [deploy-python-demo-preprod]
   plan:
   - get: concourse-demo-python-service
     passed: [deploy-python-demo-preprod]
