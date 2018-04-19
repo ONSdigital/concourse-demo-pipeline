@@ -3,13 +3,78 @@ resources:
   type: git
   source: {uri: "https://github.com/ONSdigital/concourse-demo-acceptance-tests"}
 
+- name: concourse-demo-python-service
+  type: git
+  source: {uri: "https://github.com/ONSdigital/concourse-demo-python-service"}
+
+- name: concourse-demo-python-tag
+  type: concourse-git-semver-tag
+  source:
+    uri: https://github.com/ONSdigital/concourse-demo-python-service
+    username: ((github_username))
+    password: ((github_password))
+
+- name: cf-resource-ci
+  type: cf
+  source:
+    api: ((cloudfoundry_api))
+    username: ((cloudfoundry_email))
+    password: ((cloudfoundry_password))
+    organization: rmras
+    space: ci
+    skip_cert_check: true
+
+- name: cf-resource-int
+  type: cf
+  source:
+    api: ((cloudfoundry_api))
+    username: ((cloudfoundry_email))
+    password: ((cloudfoundry_password))
+    organization: rmras
+    space: int
+    skip_cert_check: true
+
+- name: cf-resource-sit
+  type: cf
+  source:
+    api: ((cloudfoundry_api))
+    username: ((cloudfoundry_email))
+    password: ((cloudfoundry_password))
+    organization: rmras
+    space: sit
+    skip_cert_check: true
+
+- name: cf-resource-cat
+  type: cf
+  source:
+    api: ((cloudfoundry_api))
+    username: ((cloudfoundry_email))
+    password: ((cloudfoundry_password))
+    organization: rmras
+    space: cat
+    skip_cert_check: true
+
 jobs:
+- name: deploy-python-demo-ci
+  serial_groups: [acceptance_tests]
+  plan:
+  - get: concourse-demo-python-service
+    trigger: true
+  - put: cf-resource-ci
+    params:
+      manifest: concourse-demo-python-service/manifest.yml
+      path: concourse-demo-python-service
+      current_app_name: concourse-demo-python-service-ci
+
 - name: acceptance-tests
   serial_groups: [acceptance_tests]
   plan:
   - get: concourse-demo-acceptance-tests
     trigger: true
-  - task: run-acceptance-testsf
+  - get: concourse-demo-python-service
+    passed: [deploy-python-demo-ci]
+    trigger: true
+  - task: run-acceptance-tests
     config:
       platform: linux
       image_resource:
@@ -28,3 +93,39 @@ jobs:
         - |
           pipenv install
           pipenv run behave
+
+- name: deploy-python-demo-int
+  serial_groups: [acceptance_tests]
+  plan:
+  - get: concourse-demo-python-service
+    passed: [acceptance-tests]
+    trigger: true
+  - put: cf-resource-int
+    params:
+      manifest: concourse-demo-python-service/manifest.yml
+      path: concourse-demo-python-service
+      current_app_name: concourse-demo-python-service-int
+
+- name: deploy-python-demo-preprod
+  serial_groups: [acceptance_tests]
+  plan:
+  - get: concourse-demo-python-service
+    passed: [deploy-python-demo-int]
+  - put: concourse-demo-python-tag
+    
+  - put: cf-resource-sit
+    params:
+      manifest: concourse-demo-python-service/manifest.yml
+      path: concourse-demo-python-service
+      current_app_name: concourse-demo-python-service-preprod
+
+- name: deploy-python-demo-prod
+  serial_groups: [deploy-python-demo-preprod]
+  plan:
+  - get: concourse-demo-python-service
+    passed: [deploy-python-demo-preprod]
+  - put: cf-resource-cat
+    params:
+      manifest: concourse-demo-python-service/manifest.yml
+      path: concourse-demo-python-service
+      current_app_name: concourse-demo-python-service-prod
