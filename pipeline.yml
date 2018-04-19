@@ -4,20 +4,27 @@ resources:
   source: {uri: "https://github.com/ONSdigital/concourse-demo-acceptance-tests"}
 
 jobs:
-- name: hello
+- name: acceptance-tests
+  serial_groups: [acceptance_tests]
   plan:
   - get: concourse-demo-acceptance-tests
     trigger: true
-  - task: helloworld
+  - task: run-acceptance-testsf
     config:
       platform: linux
       image_resource:
         type: docker-image
         source:
-          repository: ubuntu
+          repository: kennethreitz/pipenv
+      inputs:
+        - name: concourse-demo-acceptance-tests
+      params:
+        ENDPOINT: 'http://concourse-demo-python.apps.devtest.onsclofo.uk'
       run:
         path: sh
+        dir: concourse-demo-acceptance-tests
         args:
         - -exc
         - |
-          echo helloworld
+          pipenv install
+          pipenv run behave
