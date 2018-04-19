@@ -61,11 +61,34 @@ resources:
     skip_cert_check: true
 
 jobs:
+- name: python-unit-tests
+  plan: 
+  - get: concourse-demo-python-service
+    trigger: true
+  - task: run-unit-tests
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: kennethreitz/pipenv
+      inputs:
+      - name: concourse-demo-python-service
+      run:
+        path: sh
+        dir: concourse-demo-python-service
+        args:
+        - -exc
+        - |
+          pipenv install
+          pipenv run python -m pytest
+
 - name: deploy-python-demo-ci
   serial_groups: [acceptance_tests]
   plan:
   - get: concourse-demo-python-service
     trigger: true
+    passed: [python-unit-tests]
   - put: cf-resource-ci
     params:
       manifest: concourse-demo-python-service/manifest.yml
