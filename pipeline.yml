@@ -149,8 +149,10 @@ jobs:
       current_app_name: concourse-demo-python-service-int
 
 - name: deploy-python-demo-preprod
+  disable_manual_trigger: true
   plan:
   - get: concourse-demo-python-service
+    trigger: true
     passed: [deploy-python-demo-int]
   - put: concourse-demo-python-tag
     params: {bump: minor}
@@ -161,8 +163,10 @@ jobs:
       current_app_name: concourse-demo-python-service-preprod
 
 - name: deploy-python-demo-prod
+  disable_manual_trigger: true
   plan:
   - get: concourse-demo-python-service
+    trigger: true
     passed: [deploy-python-demo-preprod]
   - put: cf-resource-cat
     params:
