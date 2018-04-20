@@ -18,12 +18,25 @@ resources:
   type: git
   source: {uri: "https://github.com/ONSdigital/concourse-demo-python-service"}
 
+- name: concourse-demo-preprod-deploy-trigger
+  type: git
+  source:
+    uri: "https://github.com/ONSdigital/concourse-demo-deploy-trigger"
+    paths: ["preprod/*"]
+
+- name: concourse-demo-prod-deploy-trigger
+  type: git
+  source:
+    uri: "https://github.com/ONSdigital/concourse-demo-deploy-trigger"
+    paths: ["prod/*"]
+
 - name: concourse-demo-python-tag
   type: concourse-git-semver-tag
   source:
     uri: https://github.com/ONSdigital/concourse-demo-python-service
     username: ((github_username))
     password: ((github_password))
+    branch: master
 
 - name: cf-resource-ci
   type: cf
@@ -137,8 +150,9 @@ jobs:
   disable_manual_trigger: true
   plan:
   - get: concourse-demo-python-service
-    trigger: true
     passed: [deploy-python-demo-int]
+  - get: concourse-demo-preprod-deploy-trigger
+    trigger: true
   - put: concourse-demo-python-tag
     params: {bump: minor}
   - put: cf-resource-sit
@@ -151,8 +165,9 @@ jobs:
   disable_manual_trigger: true
   plan:
   - get: concourse-demo-python-service
-    trigger: true
     passed: [deploy-python-demo-preprod]
+  - get: concourse-demo-prod-deploy-trigger
+    trigger: true
   - put: cf-resource-cat
     params:
       manifest: concourse-demo-python-service/manifest.yml
