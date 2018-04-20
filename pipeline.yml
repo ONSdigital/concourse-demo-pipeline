@@ -9,6 +9,11 @@ resource_types:
   source:
     repository: cfcommunity/slack-notification-resource
 
+- name: artifactory
+  type: docker-image
+  source:
+    repository: pivotalservices/artifactory-resource
+
 resources:
 - name: concourse-demo-acceptance-tests
   type: git
@@ -38,6 +43,14 @@ resources:
   type: concourse-git-semver-tag
   source:
     uri: https://github.com/ONSdigital/concourse-demo-python-service
+    username: ((github_username))
+    password: ((github_password))
+    branch: master
+
+- name: concourse-demo-java-tag
+  type: concourse-git-semver-tag
+  source:
+    uri: https://github.com/ONSdigital/concourse-demo-java-service
     username: ((github_username))
     password: ((github_password))
     branch: master
@@ -87,6 +100,16 @@ resources:
   source:
     url: ((slack-webhook))
 
+- name: file-repository
+  type: artifactory
+  source:
+    endpoint: http://artifactory.rmdev.onsdigital.uk/artifactory
+    repository: "/libs-release-local/uk/gov/ons/ctp/product/"
+    regex: "concourse_demo_service-(?<version>.*).jar"
+    username: ((artifactory_username))
+    password: ((artifactory_password))
+    skip_ssl_verification: true
+
 jobs:
 - name: python-unit-tests
   plan: 
@@ -100,22 +123,7 @@ jobs:
   - get: concourse-demo-java-service
     trigger: true
   - task: run-unit-tests
-    config:
-      platform: linux
-      image_resource:
-        type: docker-image
-        source:
-          repository: maven
-          tag: 3.3.9-jdk-8
-      inputs:
-        - name: concourse-demo-java-service
-      run:
-        path: sh
-        dir: concourse-demo-java-service
-        args:
-        - -exc
-        - |
-          mvn test
+    file: concourse-demo-java-service/ci/task.yml
 
 - name: deploy-python-demo-ci
   serial_groups: [acceptance_tests]
@@ -129,6 +137,20 @@ jobs:
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-ci
 
+- name: deploy-java-demo-ci
+  serial_groups: [acceptance_tests]
+  plan:
+  - get: concourse-demo-java-service
+    trigger: true
+    passed: [java-unit-tests]
+  - task: run-build
+    file: concourse-demo-java-service/ci/task.yml
+  - put: cf-resource-ci
+    params:
+      manifest: concourse-demo-java-service/manifest.yml
+      path: artifacts/*.jar
+      current_app_name: concourse-demo-java-service-ci
+
 - name: acceptance-tests
   serial_groups: [acceptance_tests]
   plan:
@@ -136,6 +158,9 @@ jobs:
     trigger: true
   - get: concourse-demo-python-service
     passed: [deploy-python-demo-ci]
+    trigger: true
+  - get: concourse-demo-java-service
+    passed: [deploy-java-demo-ci]
     trigger: true
   - task: run-acceptance-tests
     on_failure:
@@ -172,6 +197,19 @@ jobs:
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-int
 
+- name: deploy-java-demo-int
+  plan:
+  - get: concourse-demo-java-service
+    trigger: true
+    passed: [acceptance-tests]
+  - task: run-build
+    file: concourse-demo-java-service/ci/task.yml
+  - put: cf-resource-int
+    params:
+      manifest: concourse-demo-java-service/manifest.yml
+      path: artifacts/*.jar
+      current_app_name: concourse-demo-java-service-int
+
 - name: deploy-python-demo-preprod
   disable_manual_trigger: true
   plan:
@@ -181,11 +219,32 @@ jobs:
     trigger: true
   - put: concourse-demo-python-tag
     params: {bump: minor}
+  - task: run-build
+    file: concourse-demo-python-service/ci/task.yml
   - put: cf-resource-sit
     params:
       manifest: concourse-demo-python-service/manifest.yml
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-preprod
+
+- name: deploy-java-demo-preprod
+  disable_manual_trigger: true
+  plan:
+  - get: concourse-demo-java-service
+    passed: [deploy-java-demo-int]
+  - get: concourse-demo-preprod-deploy-trigger
+    trigger: true
+  - task: run-build
+    file: concourse-demo-java-service/ci/task.yml
+  - put: concourse-demo-java-tag
+    params: {bump: minor}
+  - put: file-repository
+    params: {file: "artifacts/*.jar"}
+  - put: cf-resource-sit
+    params:
+      manifest: concourse-demo-java-service/manifest.yml
+      path: artifacts/*.jar
+      current_app_name: concourse-demo-java-service-sit
 
 - name: deploy-python-demo-prod
   disable_manual_trigger: true
@@ -199,3 +258,18 @@ jobs:
       manifest: concourse-demo-python-service/manifest.yml
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-prod
+
+- name: deploy-java-demo-prod
+  disable_manual_trigger: true
+  plan:
+  - get: concourse-demo-java-service
+    passed: [deploy-java-demo-preprod]
+  - get: file-repository
+    passed: [deploy-java-demo-preprod]
+  - get: concourse-demo-prod-deploy-trigger
+    trigger: true
+  - put: cf-resource-cat
+    params:
+      manifest: concourse-demo-java-service/manifest.yml
+      path: file-repository/*.jar
+      current_app_name: concourse-demo-java-service-prod
