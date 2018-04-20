@@ -133,6 +133,8 @@ jobs:
     passed: [python-unit-tests]
   - put: cf-resource-ci
     params:
+      environment_variables:
+        ANIMAL_SERVICE: "http://concourse-demo-java-service-ci.apps.devtest.onsclofo.uk"
       manifest: concourse-demo-python-service/manifest.yml
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-ci
