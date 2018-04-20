@@ -178,7 +178,7 @@ jobs:
       inputs:
         - name: concourse-demo-acceptance-tests
       params:
-        ENDPOINT: 'http://concourse-demo-python.apps.devtest.onsclofo.uk'
+        ENDPOINT: 'http://concourse-demo-python-service-ci.apps.devtest.onsclofo.uk'
       run:
         path: sh
         dir: concourse-demo-acceptance-tests
