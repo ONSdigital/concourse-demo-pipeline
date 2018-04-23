@@ -30,29 +30,29 @@ resources:
 - name: concourse-demo-preprod-deploy-trigger
   type: git
   source:
-    uri: "https://github.com/ONSdigital/concourse-demo-deploy-trigger"
+    uri: "git@github.com:ONSdigital/concourse-demo-deploy-trigger"
     paths: ["preprod/*"]
+    private_key: ((github_key))
 
 - name: concourse-demo-prod-deploy-trigger
   type: git
   source:
-    uri: "https://github.com/ONSdigital/concourse-demo-deploy-trigger"
+    uri: "git@github.com:ONSdigital/concourse-demo-deploy-trigger"
     paths: ["prod/*"]
+    private_key: ((github_key))
 
 - name: concourse-demo-python-tag
   type: concourse-git-semver-tag
   source:
-    uri: https://github.com/ONSdigital/concourse-demo-python-service
-    username: ((github_username))
-    password: ((github_password))
+    uri: git@github.com:ONSdigital/concourse-demo-python-service.git
+    private_key: ((github_key))
     branch: master
 
 - name: concourse-demo-java-tag
   type: concourse-git-semver-tag
   source:
-    uri: https://github.com/ONSdigital/concourse-demo-java-service
-    username: ((github_username))
-    password: ((github_password))
+    uri: git@github.com:ONSdigital/concourse-demo-java-service.git
+    private_key: ((github_key))
     branch: master
 
 - name: cf-resource-ci
@@ -126,7 +126,7 @@ jobs:
     file: concourse-demo-java-service/ci/task.yml
 
 - name: deploy-python-demo-ci
-  serial_groups: [acceptance_tests]
+  serial_groups: [deploy-python-demo-ci]
   plan:
   - get: concourse-demo-python-service
     trigger: true
@@ -140,7 +140,7 @@ jobs:
       current_app_name: concourse-demo-python-service-ci
 
 - name: deploy-java-demo-ci
-  serial_groups: [acceptance_tests]
+  serial_groups: [deploy-java-demo-ci]
   plan:
   - get: concourse-demo-java-service
     trigger: true
@@ -154,7 +154,7 @@ jobs:
       current_app_name: concourse-demo-java-service-ci
 
 - name: acceptance-tests
-  serial_groups: [acceptance_tests]
+  serial_groups: [deploy-python-demo-ci, deploy-java-demo-ci]
   plan:
   - get: concourse-demo-acceptance-tests
     trigger: true
@@ -189,17 +189,21 @@ jobs:
           pipenv run behave
 
 - name: deploy-python-demo-int
+  serial_groups: [deploy-python-demo-int]
   plan:
   - get: concourse-demo-python-service
     passed: [acceptance-tests]
     trigger: true
   - put: cf-resource-int
     params:
+      environment_variables:
+        ANIMAL_SERVICE: "http://concourse-demo-java-service-int.apps.devtest.onsclofo.uk"
       manifest: concourse-demo-python-service/manifest.yml
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-int
 
 - name: deploy-java-demo-int
+  serial_groups: [deploy-java-demo-int]
   plan:
   - get: concourse-demo-java-service
     trigger: true
@@ -212,11 +216,47 @@ jobs:
       path: artifacts/*.jar
       current_app_name: concourse-demo-java-service-int
 
-- name: deploy-python-demo-preprod
-  disable_manual_trigger: true
+- name: int-smoke-tests
+  serial_groups: [deploy-python-demo-int, deploy-java-demo-int]
   plan:
+  - get: concourse-demo-acceptance-tests
+    trigger: true
   - get: concourse-demo-python-service
     passed: [deploy-python-demo-int]
+    trigger: true
+  - get: concourse-demo-java-service
+    passed: [deploy-java-demo-int]
+    trigger: true
+  - task: run-int-smoke-tests
+    on_failure:
+      put: notify
+      params:
+        text: "Int smoke test failed"
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: kennethreitz/pipenv
+      inputs:
+        - name: concourse-demo-acceptance-tests
+      params:
+        ENDPOINT: 'http://concourse-demo-python-service-int.apps.devtest.onsclofo.uk'
+      run:
+        path: sh
+        dir: concourse-demo-acceptance-tests
+        args:
+        - -exc
+        - |
+          pipenv install
+          pipenv run behave
+
+- name: deploy-python-demo-preprod
+  disable_manual_trigger: true
+  serial_groups: [deploy-python-demo-preprod]
+  plan:
+  - get: concourse-demo-python-service
+    passed: [int-smoke-tests]
   - get: concourse-demo-preprod-deploy-trigger
     trigger: true
   - put: concourse-demo-python-tag
@@ -225,15 +265,18 @@ jobs:
     file: concourse-demo-python-service/ci/task.yml
   - put: cf-resource-sit
     params:
+      environment_variables:
+        ANIMAL_SERVICE: "http://concourse-demo-java-service-sit.apps.devtest.onsclofo.uk"
       manifest: concourse-demo-python-service/manifest.yml
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-preprod
 
 - name: deploy-java-demo-preprod
   disable_manual_trigger: true
+  serial_groups: [deploy-java-demo-preprod]
   plan:
   - get: concourse-demo-java-service
-    passed: [deploy-java-demo-int]
+    passed: [int-smoke-tests]
   - get: concourse-demo-preprod-deploy-trigger
     trigger: true
   - task: run-build
@@ -248,24 +291,63 @@ jobs:
       path: artifacts/*.jar
       current_app_name: concourse-demo-java-service-sit
 
-- name: deploy-python-demo-prod
-  disable_manual_trigger: true
+- name: preprod-smoke-tests
+  serial_groups: [deploy-python-demo-preprod, deploy-java-demo-preprod]
   plan:
+  - get: concourse-demo-acceptance-tests
+    trigger: true
   - get: concourse-demo-python-service
     passed: [deploy-python-demo-preprod]
+    trigger: true
+  - get: concourse-demo-java-service
+    passed: [deploy-java-demo-preprod]
+    trigger: true
+  - task: run-preprod-smoke-tests
+    on_failure:
+      put: notify
+      params:
+        text: "Preprod smoke test failed"
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: kennethreitz/pipenv
+      inputs:
+        - name: concourse-demo-acceptance-tests
+      params:
+        ENDPOINT: 'http://concourse-demo-python-service-preprod.apps.devtest.onsclofo.uk'
+      run:
+        path: sh
+        dir: concourse-demo-acceptance-tests
+        args:
+        - -exc
+        - |
+          pipenv install
+          pipenv run behave
+
+- name: deploy-python-demo-prod
+  disable_manual_trigger: true
+  serial_groups: [deploy-python-demo-prod]
+  plan:
+  - get: concourse-demo-python-service
+    passed: [preprod-smoke-tests]
   - get: concourse-demo-prod-deploy-trigger
     trigger: true
   - put: cf-resource-cat
     params:
+      environment_variables:
+        ANIMAL_SERVICE: "http://concourse-demo-java-service-prod.apps.devtest.onsclofo.uk"
       manifest: concourse-demo-python-service/manifest.yml
       path: concourse-demo-python-service
       current_app_name: concourse-demo-python-service-prod
 
 - name: deploy-java-demo-prod
   disable_manual_trigger: true
+  serial_groups: [deploy-java-demo-prod]
   plan:
   - get: concourse-demo-java-service
-    passed: [deploy-java-demo-preprod]
+    passed: [preprod-smoke-tests]
   - get: file-repository
     passed: [deploy-java-demo-preprod]
   - get: concourse-demo-prod-deploy-trigger
@@ -275,3 +357,38 @@ jobs:
       manifest: concourse-demo-java-service/manifest.yml
       path: file-repository/*.jar
       current_app_name: concourse-demo-java-service-prod
+
+- name: prod-smoke-tests
+  serial_groups: [deploy-python-demo-prod, deploy-java-demo-prod]
+  plan:
+  - get: concourse-demo-acceptance-tests
+    trigger: true
+  - get: concourse-demo-python-service
+    passed: [deploy-python-demo-prod]
+    trigger: true
+  - get: concourse-demo-java-service
+    passed: [deploy-java-demo-prod]
+    trigger: true
+  - task: run-prod-smoke-tests
+    on_failure:
+      put: notify
+      params:
+        text: "Prod smoke test failed"
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: kennethreitz/pipenv
+      inputs:
+        - name: concourse-demo-acceptance-tests
+      params:
+        ENDPOINT: 'http://concourse-demo-python-service-prod.apps.devtest.onsclofo.uk'
+      run:
+        path: sh
+        dir: concourse-demo-acceptance-tests
+        args:
+        - -exc
+        - |
+          pipenv install
+          pipenv run behave
