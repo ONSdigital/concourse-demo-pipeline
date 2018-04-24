@@ -27,6 +27,10 @@ resources:
   type: git
   source: {uri: "https://github.com/ONSdigital/concourse-demo-java-service"}
 
+- name: concourse-demo-notifications
+  type: git
+  source: {uri: "https://github.com/ONSdigital/concourse-demo-notifications"}
+
 - name: concourse-demo-preprod-deploy-trigger
   type: git
   source:
@@ -259,10 +263,16 @@ jobs:
     passed: [int-smoke-tests]
   - get: concourse-demo-preprod-deploy-trigger
     trigger: true
-  - put: concourse-demo-python-tag
-    params: {bump: minor}
+  - get: concourse-demo-notifications
   - task: run-build
     file: concourse-demo-python-service/ci/task.yml
+  - put: concourse-demo-python-tag
+    params: {bump: minor}
+  - task: release-notes
+    file: concourse-demo-notifications/ci/task.yml
+    params:
+      SLACK_HOOK: ((slack_webhook))
+      REPO_NAME: concourse-demo-python-service
   - put: cf-resource-sit
     params:
       environment_variables:
@@ -279,10 +289,16 @@ jobs:
     passed: [int-smoke-tests]
   - get: concourse-demo-preprod-deploy-trigger
     trigger: true
+  - get: concourse-demo-notifications
   - task: run-build
     file: concourse-demo-java-service/ci/task.yml
   - put: concourse-demo-java-tag
     params: {bump: minor}
+  - task: release-notes
+    file: concourse-demo-notifications/ci/task.yml
+    params:
+      SLACK_HOOK: ((slack_webhook))
+      REPO_NAME: concourse-demo-java-service
   - put: file-repository
     params: {file: "artifacts/*.jar"}
   - put: cf-resource-sit
