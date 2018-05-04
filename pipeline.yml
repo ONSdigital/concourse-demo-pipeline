@@ -102,7 +102,7 @@ resources:
 - name: notify
   type: slack-notification
   source:
-    url: ((slack-webhook))
+    url: ((slack_webhook))
 
 - name: file-repository
   type: artifactory
