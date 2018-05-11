@@ -104,12 +104,22 @@ resources:
   source:
     url: ((slack_webhook))
 
-- name: file-repository
+- name: release-repository
   type: artifactory
   source:
     endpoint: http://artifactory.rmdev.onsdigital.uk/artifactory
-    repository: "/libs-release-local/uk/gov/ons/ctp/product/"
-    regex: "concourse_demo_service-(?<version>.*).jar"
+    repository: "/libs-release-local/uk/gov/ons/ctp/product/concourse-demo/releases/"
+    regex: ".*-(?<version>.*).jar"
+    username: ((artifactory_username))
+    password: ((artifactory_password))
+    skip_ssl_verification: true
+
+- name: snapshot-repository
+  type: artifactory
+  source:
+    endpoint: http://artifactory.rmdev.onsdigital.uk/artifactory
+    repository: "/libs-release-local/uk/gov/ons/ctp/product/concourse-demo/snapshots/"
+    regex: ".*-(?<version>.*).jar"
     username: ((artifactory_username))
     password: ((artifactory_password))
     skip_ssl_verification: true
@@ -122,12 +132,14 @@ jobs:
   - task: run-unit-tests
     file: python-service/ci/task.yml
 
-- name: java-unit-tests
+- name: java-build
   plan:
   - get: java-service
     trigger: true
-  - task: run-unit-tests
-    file: java-service/ci/task.yml
+  - task: run-build
+    file: java-service/ci/build.yml
+  - put: snapshot-repository
+    params: {file: "artifacts/*.jar"}
 
 - name: deploy-python-demo-ci
   serial_groups: [deploy-python-demo-ci]
@@ -138,7 +150,7 @@ jobs:
   - put: cf-resource-ci
     params:
       environment_variables:
-        ANIMAL_SERVICE: "http://concourse-demo-java-service-ci.apps.devtest.onsclofo.uk"
+        ANIMAL_SERVICE: "https://concourse-demo-java-service-ci.apps.devtest.onsclofo.uk"
       manifest: python-service/manifest.yml
       path: python-service
       current_app_name: concourse-demo-python-service-ci
@@ -148,13 +160,13 @@ jobs:
   plan:
   - get: java-service
     trigger: true
-    passed: [java-unit-tests]
-  - task: run-build
-    file: java-service/ci/task.yml
+    passed: [java-build]
+  - get: snapshot-repository
+    passed: [java-build]
   - put: cf-resource-ci
     params:
       manifest: java-service/manifest.yml
-      path: artifacts/*.jar
+      path: snapshot-repository/*.jar
       current_app_name: concourse-demo-java-service-ci
 
 - name: acceptance-tests
@@ -168,6 +180,8 @@ jobs:
   - get: java-service
     passed: [deploy-java-demo-ci]
     trigger: true
+  - get: snapshot-repository
+    passed: [deploy-java-demo-ci]
   - task: run-acceptance-tests
     on_failure:
       put: notify
@@ -182,7 +196,7 @@ jobs:
       inputs:
         - name: acceptance-tests
       params:
-        ENDPOINT: 'http://concourse-demo-python-service-ci.apps.devtest.onsclofo.uk'
+        ENDPOINT: 'https://concourse-demo-python-service-ci.apps.devtest.onsclofo.uk'
       run:
         path: sh
         dir: acceptance-tests
@@ -201,7 +215,7 @@ jobs:
   - put: cf-resource-int
     params:
       environment_variables:
-        ANIMAL_SERVICE: "http://concourse-demo-java-service-int.apps.devtest.onsclofo.uk"
+        ANIMAL_SERVICE: "https://concourse-demo-java-service-int.apps.devtest.onsclofo.uk"
       manifest: python-service/manifest.yml
       path: python-service
       current_app_name: concourse-demo-python-service-int
@@ -212,12 +226,12 @@ jobs:
   - get: java-service
     trigger: true
     passed: [acceptance-tests]
-  - task: run-build
-    file: java-service/ci/task.yml
+  - get: snapshot-repository
+    passed: [acceptance-tests]
   - put: cf-resource-int
     params:
       manifest: java-service/manifest.yml
-      path: artifacts/*.jar
+      path: snapshot-repository/*.jar
       current_app_name: concourse-demo-java-service-int
 
 - name: int-smoke-tests
@@ -232,6 +246,8 @@ jobs:
   - get: java-service
     passed: [deploy-java-demo-int]
     trigger: true
+  - get: snapshot-repository
+    passed: [deploy-java-demo-int]
   - task: run-int-smoke-tests
     on_failure:
       put: notify
@@ -246,7 +262,7 @@ jobs:
       inputs:
         - name: acceptance-tests
       params:
-        ENDPOINT: 'http://concourse-demo-python-service-int.apps.devtest.onsclofo.uk'
+        ENDPOINT: 'https://concourse-demo-python-service-int.apps.devtest.onsclofo.uk'
       run:
         path: sh
         dir: acceptance-tests
@@ -265,6 +281,8 @@ jobs:
     passed: [int-smoke-tests]
   - get: preprod-deploy-trigger
     trigger: true
+  - get: snapshot-repository
+    passed: [int-smoke-tests]
 
 - name: deploy-python-demo-preprod
   disable_manual_trigger: true
@@ -286,10 +304,66 @@ jobs:
   - put: cf-resource-sit
     params:
       environment_variables:
-        ANIMAL_SERVICE: "http://concourse-demo-java-service-sit.apps.devtest.onsclofo.uk"
+        ANIMAL_SERVICE: "https://concourse-demo-java-service-sit.apps.devtest.onsclofo.uk"
       manifest: python-service/manifest.yml
       path: python-service
       current_app_name: concourse-demo-python-service-preprod
+
+- name: release-java-demo
+  # disable_manual_trigger: true
+  serial_groups: [deploy-java-demo-preprod]
+  plan:
+  - get: java-service
+    trigger: true
+    passed: [preprod-trigger]
+  - get: snapshot-repository
+    passed: [preprod-trigger]
+  - get: java-tag
+    params: {bump: minor}
+  - task: promote-release
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: alpine
+      inputs:
+      - name: snapshot-repository
+      - name: java-tag
+      - name: java-service
+      outputs:
+      - name: release-repository
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          export GIT_REPOSITORY=java-service
+          export ARTIFACT_ID=concourse_demo_service
+          export SEMVER=java-tag
+
+          apk update && apk upgrade && apk add git
+
+          cd "$GIT_REPOSITORY"
+          current_commit_hash=$(git rev-parse HEAD)
+          cd ..
+   
+          version=$(cat "$SEMVER/number")
+   
+          snapshot_name="${ARTIFACT_ID}-${current_commit_hash}.jar"
+          release_name="${ARTIFACT_ID}-${version}.jar"
+   
+          cp -a "snapshot-repository/${snapshot_name}" "release-repository/${release_name}"
+  - put: java-tag
+    params: {bump: minor}
+  - put: release-repository
+    params: {file: "release-repository/*.jar"}
+  - get: notifications
+  - task: release-notes
+    file: notifications/ci/task.yml
+    params:
+      SLACK_HOOK: ((slack_webhook))
+      REPO_NAME: concourse-demo-java-service
 
 - name: deploy-java-demo-preprod
   disable_manual_trigger: true
@@ -297,23 +371,13 @@ jobs:
   plan:
   - get: java-service
     trigger: true
-    passed: [preprod-trigger]
-  - get: notifications
-  - task: run-build
-    file: java-service/ci/task.yml
-  - put: java-tag
-    params: {bump: minor}
-  - task: release-notes
-    file: notifications/ci/task.yml
-    params:
-      SLACK_HOOK: ((slack_webhook))
-      REPO_NAME: concourse-demo-java-service
-  - put: file-repository
-    params: {file: "artifacts/*.jar"}
+    passed: [release-java-demo]
+  - get: release-repository
+    passed: [release-java-demo]
   - put: cf-resource-sit
     params:
       manifest: java-service/manifest.yml
-      path: artifacts/*.jar
+      path: release-repository/*.jar
       current_app_name: concourse-demo-java-service-sit
 
 - name: preprod-smoke-tests
@@ -328,6 +392,8 @@ jobs:
   - get: java-service
     passed: [deploy-java-demo-preprod]
     trigger: true
+  - get: release-repository
+    passed: [deploy-java-demo-preprod]
   - task: run-preprod-smoke-tests
     on_failure:
       put: notify
@@ -342,7 +408,7 @@ jobs:
       inputs:
         - name: acceptance-tests
       params:
-        ENDPOINT: 'http://concourse-demo-python-service-preprod.apps.devtest.onsclofo.uk'
+        ENDPOINT: 'https://concourse-demo-python-service-preprod.apps.devtest.onsclofo.uk'
       run:
         path: sh
         dir: acceptance-tests
@@ -359,6 +425,8 @@ jobs:
     passed: [preprod-smoke-tests]
   - get: java-service
     passed: [preprod-smoke-tests]
+  - get: release-repository
+    passed: [preprod-smoke-tests]
   - get: prod-deploy-trigger
     trigger: true
 
@@ -372,7 +440,7 @@ jobs:
   - put: cf-resource-cat
     params:
       environment_variables:
-        ANIMAL_SERVICE: "http://concourse-demo-java-service-prod.apps.devtest.onsclofo.uk"
+        ANIMAL_SERVICE: "https://concourse-demo-java-service-prod.apps.devtest.onsclofo.uk"
       manifest: python-service/manifest.yml
       path: python-service
       current_app_name: concourse-demo-python-service-prod
@@ -384,14 +452,14 @@ jobs:
   - get: java-service
     trigger: true
     passed: [prod-trigger]
-  - get: file-repository
-    passed: [deploy-java-demo-preprod]
+  - get: release-repository
+    passed: [prod-trigger]
   - get: prod-deploy-trigger
     trigger: true
   - put: cf-resource-cat
     params:
       manifest: java-service/manifest.yml
-      path: file-repository/*.jar
+      path: release-repository/*.jar
       current_app_name: concourse-demo-java-service-prod
 
 - name: prod-smoke-tests
@@ -420,7 +488,7 @@ jobs:
       inputs:
         - name: acceptance-tests
       params:
-        ENDPOINT: 'http://concourse-demo-python-service-prod.apps.devtest.onsclofo.uk'
+        ENDPOINT: 'https://concourse-demo-python-service-prod.apps.devtest.onsclofo.uk'
       run:
         path: sh
         dir: acceptance-tests
