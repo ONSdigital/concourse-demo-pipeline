@@ -82,7 +82,7 @@ all deployments to `preprod` and `prod`.
 ### All services deployed to `preprod` tag with a version number
 
 Before a service is deployed to preprod, the current version is
-incremented using semantic versioning. i.e. 1.0.1 becomes 1.0.2.
+incremented using semantic versioning. i.e. `1.0.1` becomes `1.0.2`.
 
 This happens in the `release-*` jobs after the `preprod-trigger`.
 
@@ -93,7 +93,19 @@ commit.**
 
 ### Java services are deployed via the Artifactory repository
 
+Java artifacts are required because Maven doesn't guarentee that the
+dependencies will be identical each time is is run.
+
+For Java services, an artifact is built in the first step of the
+pipeline and pushed to Artifactory. This artifact is then used when
+deploying to both the `ci` and `latest` environments.
+
+In the `release-*` job, a copy of the artifact is then created with the
+version number in the name, and then pushed to Artifactory. This is then
+used for the deployments to `preprod` and `prod`.
+
 ### An environment can be setup with no manual interaction
+
 This is currently not demonstated in this pipeline but should be achieved
 by the following mechanisms:
 
