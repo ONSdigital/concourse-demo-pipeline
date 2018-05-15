@@ -225,6 +225,7 @@ jobs:
   plan:
   - get: acceptance-tests
     trigger: true
+    passed: [acceptance-tests]
   - get: python-service
     passed: [deploy-python-demo-int]
     trigger: true
@@ -320,6 +321,7 @@ jobs:
   plan:
   - get: acceptance-tests
     trigger: true
+    passed: [int-smoke-tests]
   - get: python-service
     passed: [deploy-python-demo-preprod]
     trigger: true
@@ -397,6 +399,7 @@ jobs:
   plan:
   - get: acceptance-tests
     trigger: true
+    passed: [preprod-smoke-tests]
   - get: python-service
     passed: [deploy-python-demo-prod]
     trigger: true
