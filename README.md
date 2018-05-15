@@ -2,7 +2,8 @@
 
 This is a demo Concourse pipeline developed by SDC. Its purpose is to
 serve as a reference on how to develop pipelines which support the ways
-in which SDC work.
+in which SDC work (see
+[ONS Software Engineer Community's Workflow](https://github.com/ONSdigital/software-engineer-community/workflow/README.md)).
 
 ## Overview
 
@@ -32,7 +33,23 @@ entire pipeline so that commit hashes are visible (along side the artifact
 version number) in the jobs.  This is intended to help they team isolate
 the commit causing the error when a job fails.
 
-## Process Requirements
+## Deploying the Pipeline
+
+In order to deploy the pipeline you need access to the secrets. A template
+for the secrets config file can be found in
+[secrets.example.yml](secrets.example.yml). It is recommended that you copy
+this template to a file called `secrets.yml` and fill in the details (**be
+careful not to commit your `secrets.yml` to git!**)
+
+The pipline is deployed with Concourse's `fly` command. After you have logged
+with `fly -t ons login`, you will need to run the following command:
+
+`fly -t ons set-pipeline  --pipeline concourse-demo --config pipeline.yml -l secrets.yml`
+
+For more information on what is considered secret data, see
+[ONS Software Engineer Community's Secrets Standards](https://github.com/ONSdigital/software-engineer-community/standards/secrets.md).
+
+## SDC Process Requirements
 
 Here are the process requirements that the pipeline had to meet and the
 technical solutions that we came up with to satisfy them.
