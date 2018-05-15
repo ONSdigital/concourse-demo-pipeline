@@ -21,6 +21,17 @@ This pipeline is made up of the following:
 - This Pipeline Repository
 - [The Deployment Trigger Repository](https://github.com/ONSdigital/concourse-demo-deploy-trigger)
 
+### Design Decisions
+
+#### Carry repository resource right through to the end of the pipeline
+
+When artifacts are created, the repository resource is no longer needed in
+later jobs in the pipeline (because the artifact is used for deployment
+instead).  Event so, we have decided to carry the resource through the
+entire pipeline so that commit hashes are visible (along side the artifact
+version number) in the jobs.  This is intended to help they team isolate
+the commit causing the error when a job fails.
+
 ## Process Requirements
 
 Here are the process requirements that the pipeline had to meet and the
