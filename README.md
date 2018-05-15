@@ -7,10 +7,18 @@ in which SDC work (see
 
 ## Overview
 
-The pipeline promotes change through 4 environments, each with it own
-intended purpose.
+The pipeline deploys all the way to the `prod` environment (Cloud Foundry space) via the `ci`, `latest` and
+`preprod` environments. Deployments to `ci` and `latest` are continuous and trigger on every merge to `master`,
+deployments to `preprod` and `prod` require manual triggers.
 
 ![Environment pipeline](sdc-pipeline-environments.svg)
+
+| Space   | Usage                                                                                                                              |
+|---------|------------------------------------------------------------------------------------------------------------------------------------|
+| ci      | Used for running automated tests.  This environment is not intended to be interacted with manually unless debugging failing tests. |
+| latest  | Used by devs for testing and exploring.  This is always up to date with the latest commit that passes the `ci` acceptance tests.   |
+| preprod | Used for SIT and CAT testing. This doesn't change without manual intervention.                                                     |
+| prod    | The live application.  Nothing can be deployed to `prod` without having first been deployed to `preprod`.                          |
 
 ### Components
 
