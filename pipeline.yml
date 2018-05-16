@@ -69,7 +69,7 @@ resources:
     space: ci
     skip_cert_check: true
 
-- name: cf-resource-int
+- name: cf-resource-latest
   type: cf
   source:
     api: ((cloudfoundry_api))
@@ -206,53 +206,53 @@ jobs:
           pipenv install
           pipenv run behave
 
-- name: deploy-python-demo-int
-  serial_groups: [deploy-python-demo-int]
+- name: deploy-python-demo-latest
+  serial_groups: [deploy-python-demo-latest]
   plan:
   - get: python-service
     passed: [acceptance-tests]
     trigger: true
-  - put: cf-resource-int
+  - put: cf-resource-latest
     params:
       environment_variables:
-        ANIMAL_SERVICE: "https://concourse-demo-java-service-int.apps.devtest.onsclofo.uk"
+        ANIMAL_SERVICE: "https://concourse-demo-java-service-latest.apps.devtest.onsclofo.uk"
       manifest: python-service/manifest.yml
       path: python-service
-      current_app_name: concourse-demo-python-service-int
+      current_app_name: concourse-demo-python-service-latest
 
-- name: deploy-java-demo-int
-  serial_groups: [deploy-java-demo-int]
+- name: deploy-java-demo-latest
+  serial_groups: [deploy-java-demo-latest]
   plan:
   - get: java-service
     trigger: true
     passed: [acceptance-tests]
   - get: snapshot-repository
     passed: [acceptance-tests]
-  - put: cf-resource-int
+  - put: cf-resource-latest
     params:
       manifest: java-service/manifest.yml
       path: snapshot-repository/*.jar
-      current_app_name: concourse-demo-java-service-int
+      current_app_name: concourse-demo-java-service-latest
 
-- name: int-smoke-tests
-  serial_groups: [deploy-python-demo-int, deploy-java-demo-int]
+- name: latest-smoke-tests
+  serial_groups: [deploy-python-demo-latest, deploy-java-demo-latest]
   plan:
   - get: acceptance-tests
     trigger: true
     passed: [acceptance-tests]
   - get: python-service
-    passed: [deploy-python-demo-int]
+    passed: [deploy-python-demo-latest]
     trigger: true
   - get: java-service
-    passed: [deploy-java-demo-int]
+    passed: [deploy-java-demo-latest]
     trigger: true
   - get: snapshot-repository
-    passed: [deploy-java-demo-int]
-  - task: run-int-smoke-tests
+    passed: [deploy-java-demo-latest]
+  - task: run-latest-smoke-tests
     on_failure:
       put: notify
       params:
-        text: "Int smoke test failed"
+        text: "Latest smoke test failed"
     config:
       platform: linux
       image_resource:
@@ -262,7 +262,7 @@ jobs:
       inputs:
         - name: acceptance-tests
       params:
-        ENDPOINT: 'https://concourse-demo-python-service-int.apps.devtest.onsclofo.uk'
+        ENDPOINT: 'https://concourse-demo-python-service-latest.apps.devtest.onsclofo.uk'
       run:
         path: sh
         dir: acceptance-tests
@@ -276,13 +276,13 @@ jobs:
   disable_manual_trigger: true
   plan:
   - get: python-service
-    passed: [int-smoke-tests]
+    passed: [latest-smoke-tests]
   - get: java-service
-    passed: [int-smoke-tests]
+    passed: [latest-smoke-tests]
   - get: preprod-deploy-trigger
     trigger: true
   - get: snapshot-repository
-    passed: [int-smoke-tests]
+    passed: [latest-smoke-tests]
 
 - name: deploy-python-demo-preprod
   disable_manual_trigger: true
@@ -385,7 +385,7 @@ jobs:
   plan:
   - get: acceptance-tests
     trigger: true
-    passed: [int-smoke-tests]
+    passed: [latest-smoke-tests]
   - get: python-service
     passed: [deploy-python-demo-preprod]
     trigger: true
