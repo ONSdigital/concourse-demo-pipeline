@@ -326,7 +326,7 @@ jobs:
       image_resource:
         type: docker-image
         source:
-          repository: alpine
+          repository: alpine/git
       inputs:
       - name: snapshot-repository
       - name: java-tag
@@ -341,8 +341,6 @@ jobs:
           export GIT_REPOSITORY=java-service
           export ARTIFACT_ID=concourse_demo_service
           export SEMVER=java-tag
-
-          apk update && apk upgrade && apk add git
 
           cd "$GIT_REPOSITORY"
           current_commit_hash=$(git rev-parse HEAD)
