@@ -310,7 +310,7 @@ jobs:
       current_app_name: concourse-demo-python-service-preprod
 
 - name: release-java-demo
-  # disable_manual_trigger: true
+  disable_manual_trigger: true
   serial_groups: [deploy-java-demo-preprod]
   plan:
   - get: java-service
