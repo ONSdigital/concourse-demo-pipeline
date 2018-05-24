@@ -7,6 +7,8 @@ in which SDC work (see
 
 ## Overview
 
+![Demo pipeline](demo-pipeline.png)
+
 The pipeline deploys all the way to the `prod` environment (Cloud Foundry space) via the `ci`, `latest` and
 `preprod` environments. Deployments to `ci` and `latest` are continuous and trigger on every merge to `master`,
 deployments to `preprod` and `prod` require manual triggers.
